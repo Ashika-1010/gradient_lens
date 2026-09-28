@@ -1,0 +1,2 @@
+# Engine directory (Pure JavaScript autodiff engine)
+# Rule: Never import React, DOM, Canvas, or UI code here.
