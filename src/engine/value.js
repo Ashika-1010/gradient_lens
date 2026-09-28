@@ -35,7 +35,7 @@ export class Value {
   /**
    * @param {number} data - Forward numerical value
    * @param {Value[]} [parents=[]] - Operands used to produce this value (preserves duplicate references)
-   * @param {string} [op=''] - Symbol of operation producing this node ('+', '*', '')
+   * @param {string} [op=''] - Symbol of operation producing this node('+', '*', 'neg', 'sigmoid', 'log', '')
    * @param {string} [label=''] - Optional human-readable display label (e.g. 'w1', 'x1')
    */
   constructor(data, parents = [], op = '', label = '') {
@@ -98,6 +98,70 @@ export class Value {
     out._backward = () => {
       this.grad += otherVal.data * out.grad
       otherVal.grad += this.data * out.grad
+    }
+
+    return out
+  }
+
+  /**
+   * Forward negation: out = -this
+   * Backward rule:
+   *   ∂out/∂this = -1.0 => this.grad += -1 * out.grad
+   *
+   * @returns {Value}
+   */
+  neg() {
+    const out = new Value(-this.data, [this], 'neg')
+    out._backward = () => {
+      this.grad += -1 * out.grad
+    }
+    return out
+  }
+
+  /**
+   * Forward subtraction as a composite operation: out = this + (-other)
+   *
+   * @param {number|Value} other
+   * @returns {Value}
+   */
+  sub(other) {
+    return this.add(Value.from(other).neg())
+  }
+
+  /**
+   * Forward sigmoid activation: out = 1 / (1 + exp(-this))
+   * Backward rule:
+   *   sigma'(z) = sigma(z) * (1 - sigma(z))
+   *   ∂out/∂this = out.data * (1 - out.data) => this.grad += out.data * (1 - out.data) * out.grad
+   *
+   * @returns {Value}
+   */
+  sigmoid() {
+    const out = new Value(
+      1 / (1 + Math.exp(-this.data)),
+      [this],
+      'sigmoid'
+    )
+
+    out._backward = () => {
+      this.grad += out.data * (1 - out.data) * out.grad
+    }
+
+    return out
+  }
+
+  /**
+   * Forward natural logarithm: out = ln(this)
+   * Backward rule:
+   *   ∂out/∂this = 1 / this.data => this.grad += (1 / this.data) * out.grad
+   *
+   * @returns {Value}
+   */
+  log() {
+    const out = new Value(Math.log(this.data), [this], 'log')
+
+    out._backward = () => {
+      this.grad += (1 / this.data) * out.grad
     }
 
     return out
