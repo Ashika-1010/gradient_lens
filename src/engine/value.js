@@ -168,6 +168,28 @@ export class Value {
   }
 
   /**
+   * Forward clamping: clips this.data to the range [min, max]
+   * Backward rule:
+   *   ∂out/∂this = 1.0 if min < this.data < max else 0.0
+   *
+   * @param {number} min - Lower bound
+   * @param {number} max - Upper bound
+   * @returns {Value}
+   */
+  clamp(min, max) {
+    const clampedData = Math.min(Math.max(this.data, min), max)
+    const out = new Value(clampedData, [this], 'clamp')
+
+    out._backward = () => {
+      if (this.data > min && this.data < max) {
+        this.grad += out.grad
+      }
+    }
+
+    return out
+  }
+
+  /**
    * Reverse-mode automatic differentiation starting from this root node.
    *
    * Steps:

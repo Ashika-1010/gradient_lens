@@ -1,46 +1,35 @@
 import { Value } from './value.js'
 
+export const EPS = 1e-7
+
 /**
- * Computes Binary Cross-Entropy (BCE) loss between predictions and target labels:
- * L = - [ y * ln(y_hat) + (1 - y) * ln(1 - y_hat) ]
+ * Computes Binary Cross-Entropy (BCE) loss between predictions yHat and targets y:
+ * L = - [ y * log(p) + (1 - y) * log(1 - p) ]
+ * where p = yHat.clamp(EPS, 1 - EPS)
  *
- * Implemented purely using Value autodiff operations (log, neg, add, mul, sub)
+ * Implemented purely using Value autodiff operations (clamp, log, neg, add, mul, sub)
  * so that calling loss.backward() propagates real gradients through y_hat and
  * the underlying neural network parameters.
  *
- * @param {Value|number} yHat - Predicted probability (typically sigmoid output)
+ * @param {Value|number} yHat - Predicted probability (output of sigmoid)
  * @param {Value|number} y - Target ground-truth label (0 or 1)
- * @param {number} [eps=1e-15] - Numerical stability epsilon for probability clamping
- * @returns {Value} The loss node in the autodiff computation graph
+ * @returns {Value} The loss node in the autodiff computation graph labeled 'L'
  */
-export function binaryCrossEntropy(yHat, y, eps = 1e-15) {
-  const yVal = Value.from(y, 'y')
+export function bceLoss(yHat, y) {
   const yHatVal = Value.from(yHat, 'y_hat')
+  const p = yHatVal.clamp(EPS, 1 - EPS)
 
-  // 1 - y
-  const oneMinusY = Value.from(1).sub(yVal)
+  const term1 = Value.from(y).mul(p.log())
 
-  // ln(y_hat + eps) to prevent log(0) while keeping yHat connected to the graph
-  const logYHat = (eps > 0 ? yHatVal.add(eps) : yHatVal).log()
+  const term2 = Value.from(1 - y).mul(
+    Value.from(1).sub(p).log()
+  )
 
-  // 1 - y_hat
-  const oneMinusYHat = Value.from(1).sub(yHatVal)
-
-  // ln(1 - y_hat + eps)
-  const logOneMinusYHat = (eps > 0 ? oneMinusYHat.add(eps) : oneMinusYHat).log()
-
-  // y * ln(y_hat)
-  const term1 = yVal.mul(logYHat)
-
-  // (1 - y) * ln(1 - y_hat)
-  const term2 = oneMinusY.mul(logOneMinusYHat)
-
-  // - [ y * ln(y_hat) + (1 - y) * ln(1 - y_hat) ]
   const loss = term1.add(term2).neg()
-  loss.label = 'loss'
+  loss.label = 'L'
 
   return loss
 }
 
-export const bce = binaryCrossEntropy
-export const bceLoss = binaryCrossEntropy
+export const binaryCrossEntropy = bceLoss
+export const bce = bceLoss
