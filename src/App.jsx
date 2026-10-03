@@ -2,7 +2,13 @@ import React, { useState } from 'react'
 import { initNetwork, forward } from './engine/network.js'
 import { bceLoss } from './engine/loss.js'
 import { buildSnapshot } from './state/snapshot.js'
+import {
+  INITIAL_STEP,
+  canStepForward,
+  revealActivations,
+} from './state/forwardSteps.js'
 import NetworkCanvas from './ui/NetworkCanvas.jsx'
+import StepControls from './ui/StepControls.jsx'
 
 const EXAMPLE = { input: [1, 0], label: 1 }
 
@@ -10,12 +16,29 @@ export default function App() {
   // Persistent network instance across renders
   const [net] = useState(() => initNetwork())
 
-  // Forward inference and loss on fixed example
+  // Forward stepping state
+  const [stepIndex, setStepIndex] = useState(INITIAL_STEP)
+
+  // Full forward inference and loss computation
   const out = forward(net, EXAMPLE.input)
   const loss = bceLoss(out.y_hat, EXAMPLE.label)
+  const fullSnapshot = buildSnapshot(net, out)
 
-  // Build immutable snapshot for visualizer
-  const snapshot = buildSnapshot(net, out)
+  // Gated snapshot visible to the canvas
+  const visibleSnapshot = {
+    weights: fullSnapshot.weights,
+    activations: revealActivations(fullSnapshot.activations, stepIndex),
+  }
+
+  const handleStep = () => {
+    if (canStepForward(stepIndex)) {
+      setStepIndex((prev) => prev + 1)
+    }
+  }
+
+  const handleReset = () => {
+    setStepIndex(INITIAL_STEP)
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6">
@@ -26,7 +49,7 @@ export default function App() {
             <div className="flex items-center space-x-2.5 mb-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse"></span>
               <span className="text-xs uppercase tracking-wider text-blue-400 font-semibold font-mono">
-                Milestone 9: Static Network Visualization
+                Milestone 10: Forward-Pass Step Controls
               </span>
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-white">
@@ -62,9 +85,17 @@ export default function App() {
           </div>
         </div>
 
+        {/* Step Controls Section */}
+        <StepControls
+          stepIndex={stepIndex}
+          onStep={handleStep}
+          onReset={handleReset}
+          fullActivations={fullSnapshot.activations}
+        />
+
         {/* Network Canvas Section */}
         <section className="flex flex-col items-center gap-3">
-          <NetworkCanvas snapshot={snapshot} />
+          <NetworkCanvas snapshot={visibleSnapshot} />
           <div className="flex items-center justify-center gap-6 text-xs text-slate-400 font-mono">
             <span className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-blue-600 inline-block"></span> Positive Weight / High Activation (&gt; 0.5)

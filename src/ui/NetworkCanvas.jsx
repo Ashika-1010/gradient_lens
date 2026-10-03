@@ -55,11 +55,16 @@ export default function NetworkCanvas({ snapshot }) {
       let activation = 0.5
 
       if (snapshot && snapshot.activations) {
-        if (neuron.id === 'x1') activation = snapshot.activations.x1
-        else if (neuron.id === 'x2') activation = snapshot.activations.x2
-        else if (neuron.id === 'h1') activation = snapshot.activations.a_h1
-        else if (neuron.id === 'h2') activation = snapshot.activations.a_h2
-        else if (neuron.id === 'o') activation = snapshot.activations.y_hat
+        let val = null
+        if (neuron.id === 'x1') val = snapshot.activations.x1
+        else if (neuron.id === 'x2') val = snapshot.activations.x2
+        else if (neuron.id === 'h1') val = snapshot.activations.a_h1
+        else if (neuron.id === 'h2') val = snapshot.activations.a_h2
+        else if (neuron.id === 'o') val = snapshot.activations.y_hat
+
+        if (val !== null && val !== undefined) {
+          activation = val
+        }
       }
 
       // Neuron fill color based on activation centered at 0.5 with maxMagnitude 0.5
