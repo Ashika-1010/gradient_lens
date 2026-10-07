@@ -26,6 +26,18 @@ export function canStepForward(stepIndex) {
 }
 
 /**
+ * Checks whether stepping backward (to previous step) is permitted.
+ *
+ * @param {number} stepIndex - Current step index
+ * @returns {boolean}
+ */
+export function canStepBackward(stepIndex) {
+  return stepIndex > INITIAL_STEP
+}
+
+export const canStepPrevious = canStepBackward
+
+/**
  * Checks whether resetting the step sequence is permitted.
  *
  * @param {number} stepIndex - Current step index

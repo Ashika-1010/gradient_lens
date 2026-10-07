@@ -4,11 +4,20 @@ import { bceLoss } from './engine/loss.js'
 import { buildSnapshot } from './state/snapshot.js'
 import {
   INITIAL_STEP,
+  MAX_STEP,
   canStepForward,
+  canStepBackward as canStepForwardBackward,
   revealActivations,
 } from './state/forwardSteps.js'
+import {
+  INITIAL_BACKWARD_STEP,
+  canStepBackward,
+  canStepPreviousGradient,
+  revealWeightGradients,
+} from './state/backwardSteps.js'
 import NetworkCanvas from './ui/NetworkCanvas.jsx'
 import StepControls from './ui/StepControls.jsx'
+import BackwardStepControls from './ui/BackwardStepControls.jsx'
 
 const EXAMPLE = { input: [1, 0], label: 1 }
 
@@ -16,28 +25,57 @@ export default function App() {
   // Persistent network instance across renders
   const [net] = useState(() => initNetwork())
 
-  // Forward stepping state
+  // Forward and backward stepping states
   const [stepIndex, setStepIndex] = useState(INITIAL_STEP)
+  const [backwardStepIndex, setBackwardStepIndex] = useState(INITIAL_BACKWARD_STEP)
 
-  // Full forward inference and loss computation
+  // Full forward inference, loss computation, and autodiff backward pass
   const out = forward(net, EXAMPLE.input)
   const loss = bceLoss(out.y_hat, EXAMPLE.label)
+  loss.backward()
+
   const fullSnapshot = buildSnapshot(net, out)
+  const forwardComplete = stepIndex === MAX_STEP
 
   // Gated snapshot visible to the canvas
   const visibleSnapshot = {
-    weights: fullSnapshot.weights,
+    weights: forwardComplete
+      ? revealWeightGradients(fullSnapshot.weights, backwardStepIndex)
+      : revealWeightGradients(fullSnapshot.weights, INITIAL_BACKWARD_STEP),
     activations: revealActivations(fullSnapshot.activations, stepIndex),
   }
 
-  const handleStep = () => {
+  const handleForwardStep = () => {
     if (canStepForward(stepIndex)) {
       setStepIndex((prev) => prev + 1)
     }
   }
 
-  const handleReset = () => {
+  const handleForwardPrevious = () => {
+    if (canStepForwardBackward(stepIndex)) {
+      setStepIndex((prev) => prev - 1)
+    }
+  }
+
+  const handleForwardReset = () => {
     setStepIndex(INITIAL_STEP)
+    setBackwardStepIndex(INITIAL_BACKWARD_STEP)
+  }
+
+  const handleBackwardStep = () => {
+    if (canStepBackward(backwardStepIndex, forwardComplete)) {
+      setBackwardStepIndex((prev) => prev + 1)
+    }
+  }
+
+  const handleBackwardPrevious = () => {
+    if (canStepPreviousGradient(backwardStepIndex, forwardComplete)) {
+      setBackwardStepIndex((prev) => prev - 1)
+    }
+  }
+
+  const handleBackwardReset = () => {
+    setBackwardStepIndex(INITIAL_BACKWARD_STEP)
   }
 
   return (
@@ -49,7 +87,7 @@ export default function App() {
             <div className="flex items-center space-x-2.5 mb-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse"></span>
               <span className="text-xs uppercase tracking-wider text-blue-400 font-semibold font-mono">
-                Milestone 10: Forward-Pass Step Controls
+                Milestone 11: Backward-Pass Step Controls
               </span>
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-white">
@@ -85,12 +123,23 @@ export default function App() {
           </div>
         </div>
 
-        {/* Step Controls Section */}
+        {/* Forward Step Controls Section */}
         <StepControls
           stepIndex={stepIndex}
-          onStep={handleStep}
-          onReset={handleReset}
+          onStep={handleForwardStep}
+          onPrevious={handleForwardPrevious}
+          onReset={handleForwardReset}
           fullActivations={fullSnapshot.activations}
+        />
+
+        {/* Backward Step Controls Section */}
+        <BackwardStepControls
+          backwardStepIndex={backwardStepIndex}
+          onStep={handleBackwardStep}
+          onPrevious={handleBackwardPrevious}
+          onReset={handleBackwardReset}
+          fullWeights={fullSnapshot.weights}
+          forwardComplete={forwardComplete}
         />
 
         {/* Network Canvas Section */}
@@ -112,3 +161,4 @@ export default function App() {
     </div>
   )
 }
+

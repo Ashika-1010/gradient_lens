@@ -46,6 +46,20 @@ export default function NetworkCanvas({ snapshot }) {
         ctx.lineWidth = lineWidth
         ctx.lineCap = 'round'
         ctx.stroke()
+
+        // Draw gradient badge at midpoint if gradient is revealed
+        if (weight && weight.grad != null) {
+          const midX = (fromPos.x + toPos.x) / 2
+          const midY = (fromPos.y + toPos.y) / 2
+
+          ctx.beginPath()
+          ctx.arc(midX, midY, 7, 0, Math.PI * 2)
+          ctx.fillStyle = valueToColor(weight.grad, 1)
+          ctx.fill()
+          ctx.strokeStyle = '#111827'
+          ctx.lineWidth = 1
+          ctx.stroke()
+        }
       }
     }
 
