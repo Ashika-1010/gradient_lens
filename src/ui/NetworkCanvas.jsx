@@ -8,15 +8,27 @@ import {
   EDGES,
 } from '../visualization/layout.js'
 import { valueToColor } from '../visualization/colorScale.js'
+import { findClickedEdge } from '../visualization/hitTest.js'
 
 /**
  * Renders the 2->2->1 neural network computation graph on an HTML5 canvas.
- * Consumes only primitive data snapshots.
+ * Consumes only primitive data snapshots and handles edge selection.
  *
- * @param {{ snapshot: { weights: Object, activations: Object|null } }} props
+ * @param {{
+ *   snapshot: { weights: Object, activations: Object|null },
+ *   selectedEdge?: string|null,
+ *   selectedParam?: string|null,
+ *   onSelectEdge?: (label: string|null) => void
+ * }} props
  */
-export default function NetworkCanvas({ snapshot }) {
+export default function NetworkCanvas({
+  snapshot,
+  selectedEdge = null,
+  selectedParam = null,
+  onSelectEdge = null,
+}) {
   const canvasRef = useRef(null)
+  const currentSelected = selectedParam || selectedEdge
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -34,11 +46,28 @@ export default function NetworkCanvas({ snapshot }) {
         const fromPos = NEURON_POSITIONS[edge.from]
         const toPos = NEURON_POSITIONS[edge.to]
         const weight = snapshot.weights[edge.weightLabel]
+        const isSelected = currentSelected === edge.weightLabel
 
         const weightVal = weight ? weight.value : 0
         const strokeColor = valueToColor(weightVal, 2)
         const lineWidth = Math.min(Math.abs(weightVal) * 3 + 1, 8)
 
+        // Draw highlight glow if edge is selected
+        if (isSelected) {
+          ctx.save()
+          ctx.beginPath()
+          ctx.moveTo(fromPos.x, fromPos.y)
+          ctx.lineTo(toPos.x, toPos.y)
+          ctx.strokeStyle = '#38bdf8' // Sky-blue highlight glow
+          ctx.lineWidth = lineWidth + 8
+          ctx.lineCap = 'round'
+          ctx.shadowColor = '#38bdf8'
+          ctx.shadowBlur = 12
+          ctx.stroke()
+          ctx.restore()
+        }
+
+        // Draw main edge line
         ctx.beginPath()
         ctx.moveTo(fromPos.x, fromPos.y)
         ctx.lineTo(toPos.x, toPos.y)
@@ -51,6 +80,15 @@ export default function NetworkCanvas({ snapshot }) {
         if (weight && weight.grad != null) {
           const midX = (fromPos.x + toPos.x) / 2
           const midY = (fromPos.y + toPos.y) / 2
+
+          // Highlight ring around badge if selected
+          if (isSelected) {
+            ctx.beginPath()
+            ctx.arc(midX, midY, 11, 0, Math.PI * 2)
+            ctx.strokeStyle = '#38bdf8'
+            ctx.lineWidth = 2
+            ctx.stroke()
+          }
 
           ctx.beginPath()
           ctx.arc(midX, midY, 7, 0, Math.PI * 2)
@@ -100,7 +138,35 @@ export default function NetworkCanvas({ snapshot }) {
       ctx.textBaseline = 'middle'
       ctx.fillText(neuron.label, pos.x, pos.y)
     }
-  }, [snapshot])
+  }, [snapshot, currentSelected])
+
+  const handleClick = (e) => {
+    const canvas = canvasRef.current
+    if (!canvas || !onSelectEdge) return
+
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    const clickX = (e.clientX - rect.left) * scaleX
+    const clickY = (e.clientY - rect.top) * scaleY
+
+    const clickedEdge = findClickedEdge(clickX, clickY, EDGES, NEURON_POSITIONS, 12)
+    onSelectEdge(clickedEdge)
+  }
+
+  const handleMouseMove = (e) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    const mouseX = (e.clientX - rect.left) * scaleX
+    const mouseY = (e.clientY - rect.top) * scaleY
+
+    const hovered = findClickedEdge(mouseX, mouseY, EDGES, NEURON_POSITIONS, 12)
+    canvas.style.cursor = hovered ? 'pointer' : 'default'
+  }
 
   return (
     <div className="flex justify-center items-center bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-inner">
@@ -108,6 +174,8 @@ export default function NetworkCanvas({ snapshot }) {
         ref={canvasRef}
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
+        onClick={handleClick}
+        onMouseMove={handleMouseMove}
         className="rounded-lg shadow-sm"
       />
     </div>

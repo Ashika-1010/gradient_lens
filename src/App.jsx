@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { initNetwork, forward } from './engine/network.js'
 import { bceLoss } from './engine/loss.js'
+import { buildChainExpression } from './engine/chainRule.js'
 import { buildSnapshot } from './state/snapshot.js'
 import {
   INITIAL_STEP,
@@ -18,6 +19,7 @@ import {
 import NetworkCanvas from './ui/NetworkCanvas.jsx'
 import StepControls from './ui/StepControls.jsx'
 import BackwardStepControls from './ui/BackwardStepControls.jsx'
+import InspectorPanel from './ui/InspectorPanel.jsx'
 
 const EXAMPLE = { input: [1, 0], label: 1 }
 
@@ -28,6 +30,9 @@ export default function App() {
   // Forward and backward stepping states
   const [stepIndex, setStepIndex] = useState(INITIAL_STEP)
   const [backwardStepIndex, setBackwardStepIndex] = useState(INITIAL_BACKWARD_STEP)
+
+  // Selected parameter state for gradient inspector
+  const [selectedParam, setSelectedParam] = useState(null)
 
   // Full forward inference, loss computation, and autodiff backward pass
   const out = forward(net, EXAMPLE.input)
@@ -44,6 +49,18 @@ export default function App() {
       : revealWeightGradients(fullSnapshot.weights, INITIAL_BACKWARD_STEP),
     activations: revealActivations(fullSnapshot.activations, stepIndex),
   }
+
+  // Determine whether the currently selected parameter's gradient has been revealed
+  const isParamRevealed = Boolean(
+    selectedParam &&
+    forwardComplete &&
+    visibleSnapshot.weights[selectedParam]?.grad !== null
+  )
+
+  // Build analytical chain-rule expression if a parameter is selected
+  const chainExpression = selectedParam
+    ? buildChainExpression(net, out, selectedParam, EXAMPLE.label)
+    : null
 
   const handleForwardStep = () => {
     if (canStepForward(stepIndex)) {
@@ -85,9 +102,9 @@ export default function App() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-5 gap-4">
           <div>
             <div className="flex items-center space-x-2.5 mb-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse"></span>
-              <span className="text-xs uppercase tracking-wider text-blue-400 font-semibold font-mono">
-                Milestone 11: Backward-Pass Step Controls
+              <span className="h-2.5 w-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+              <span className="text-xs uppercase tracking-wider text-cyan-400 font-semibold font-mono">
+                Milestone 12: Gradient Inspector
               </span>
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-white">
@@ -144,7 +161,11 @@ export default function App() {
 
         {/* Network Canvas Section */}
         <section className="flex flex-col items-center gap-3">
-          <NetworkCanvas snapshot={visibleSnapshot} />
+          <NetworkCanvas
+            snapshot={visibleSnapshot}
+            selectedParam={selectedParam}
+            onSelectEdge={(edgeLabel) => setSelectedParam(edgeLabel)}
+          />
           <div className="flex items-center justify-center gap-6 text-xs text-slate-400 font-mono">
             <span className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-blue-600 inline-block"></span> Positive Weight / High Activation (&gt; 0.5)
@@ -157,8 +178,16 @@ export default function App() {
             </span>
           </div>
         </section>
+
+        {/* Gradient Inspector Panel Section */}
+        <InspectorPanel
+          selectedParam={selectedParam}
+          expression={chainExpression}
+          isRevealed={isParamRevealed}
+          paramValue={selectedParam ? fullSnapshot.weights[selectedParam]?.value : null}
+          onSelectParam={(param) => setSelectedParam(param)}
+        />
       </main>
     </div>
   )
 }
-
