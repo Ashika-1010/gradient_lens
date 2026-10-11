@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { initNetwork, forward } from './engine/network.js'
 import { bceLoss } from './engine/loss.js'
 import { buildChainExpression } from './engine/chainRule.js'
@@ -16,6 +16,11 @@ import {
   canStepPreviousGradient,
   revealWeightGradients,
 } from './state/backwardSteps.js'
+import {
+  gatePredictions,
+  isGradientRevealed,
+  recordPrediction,
+} from './state/prediction.js'
 import NetworkCanvas from './ui/NetworkCanvas.jsx'
 import StepControls from './ui/StepControls.jsx'
 import BackwardStepControls from './ui/BackwardStepControls.jsx'
@@ -31,8 +36,39 @@ export default function App() {
   const [stepIndex, setStepIndex] = useState(INITIAL_STEP)
   const [backwardStepIndex, setBackwardStepIndex] = useState(INITIAL_BACKWARD_STEP)
 
-  // Selected parameter state for gradient inspector
+  // User predictions mapped by parameter label: { [label]: 'increase'|'decrease'|'same' }
+  const [predictions, setPredictions] = useState({})
+
+  // Selected parameter state for gradient inspector and connection label
   const [selectedParam, setSelectedParam] = useState(null)
+
+  // Container refs for detecting outside clicks
+  const networkContainerRef = useRef(null)
+  const inspectorContainerRef = useRef(null)
+
+  // Handle clicks outside the network diagram and inspector to dismiss selection
+  useEffect(() => {
+    if (!selectedParam) return
+
+    const handleOutsideClick = (e) => {
+      const isInsideNetwork = networkContainerRef.current?.contains(e.target)
+      const isInsideInspector = inspectorContainerRef.current?.contains(e.target)
+
+      if (!isInsideNetwork && !isInsideInspector) {
+        setSelectedParam(null)
+      }
+    }
+
+    document.addEventListener('pointerdown', handleOutsideClick)
+    document.addEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('click', handleOutsideClick)
+
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick)
+      document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('click', handleOutsideClick)
+    }
+  }, [selectedParam])
 
   // Full forward inference, loss computation, and autodiff backward pass
   const out = forward(net, EXAMPLE.input)
@@ -42,23 +78,33 @@ export default function App() {
   const fullSnapshot = buildSnapshot(net, out)
   const forwardComplete = stepIndex === MAX_STEP
 
-  // Gated snapshot visible to the canvas
+  // Gate 1: Sequential backward-pass step gate
+  const stageWeights = forwardComplete
+    ? revealWeightGradients(fullSnapshot.weights, backwardStepIndex)
+    : revealWeightGradients(fullSnapshot.weights, INITIAL_BACKWARD_STEP)
+
+  // Gate 2: Predict -> Reveal gate (only applies to stage-revealed weights)
+  const visibleWeights = gatePredictions(stageWeights, predictions)
+
+  // Unified visible snapshot consumed by canvas and downstream views
   const visibleSnapshot = {
-    weights: forwardComplete
-      ? revealWeightGradients(fullSnapshot.weights, backwardStepIndex)
-      : revealWeightGradients(fullSnapshot.weights, INITIAL_BACKWARD_STEP),
+    weights: visibleWeights,
     activations: revealActivations(fullSnapshot.activations, stepIndex),
   }
 
-  // Determine whether the currently selected parameter's gradient has been revealed
-  const isParamRevealed = Boolean(
+  // Determine whether the backward stage has reached the currently selected parameter
+  const stageRevealed = Boolean(
     selectedParam &&
     forwardComplete &&
-    visibleSnapshot.weights[selectedParam]?.grad !== null
+    stageWeights &&
+    stageWeights[selectedParam]?.grad !== null
   )
 
-  // Build analytical chain-rule expression if a parameter is selected
-  const chainExpression = selectedParam
+  // Determine whether the currently selected parameter is fully revealed
+  const isParamRevealed = isGradientRevealed(selectedParam, stageRevealed, predictions)
+
+  // Compute analytical chain-rule expression ONLY when parameter is revealed
+  const chainExpression = isParamRevealed
     ? buildChainExpression(net, out, selectedParam, EXAMPLE.label)
     : null
 
@@ -77,6 +123,7 @@ export default function App() {
   const handleForwardReset = () => {
     setStepIndex(INITIAL_STEP)
     setBackwardStepIndex(INITIAL_BACKWARD_STEP)
+    setPredictions({})
   }
 
   const handleBackwardStep = () => {
@@ -93,6 +140,12 @@ export default function App() {
 
   const handleBackwardReset = () => {
     setBackwardStepIndex(INITIAL_BACKWARD_STEP)
+    setPredictions({})
+  }
+
+  const handlePredict = (direction) => {
+    if (!selectedParam) return
+    setPredictions((prev) => recordPrediction(prev, selectedParam, direction))
   }
 
   return (
@@ -104,7 +157,7 @@ export default function App() {
             <div className="flex items-center space-x-2.5 mb-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
               <span className="text-xs uppercase tracking-wider text-cyan-400 font-semibold font-mono">
-                Milestone 12: Gradient Inspector
+                Milestone 13: Predict &rarr; Reveal
               </span>
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-white">
@@ -155,12 +208,17 @@ export default function App() {
           onStep={handleBackwardStep}
           onPrevious={handleBackwardPrevious}
           onReset={handleBackwardReset}
-          fullWeights={fullSnapshot.weights}
+          visibleWeights={visibleWeights}
+          fullWeights={visibleWeights}
           forwardComplete={forwardComplete}
         />
 
         {/* Network Canvas Section */}
-        <section className="flex flex-col items-center gap-3">
+        <section
+          ref={networkContainerRef}
+          data-testid="network-container"
+          className="flex flex-col items-center gap-3"
+        >
           <NetworkCanvas
             snapshot={visibleSnapshot}
             selectedParam={selectedParam}
@@ -180,13 +238,18 @@ export default function App() {
         </section>
 
         {/* Gradient Inspector Panel Section */}
-        <InspectorPanel
-          selectedParam={selectedParam}
-          expression={chainExpression}
-          isRevealed={isParamRevealed}
-          paramValue={selectedParam ? fullSnapshot.weights[selectedParam]?.value : null}
-          onSelectParam={(param) => setSelectedParam(param)}
-        />
+        <div ref={inspectorContainerRef} data-testid="inspector-container">
+          <InspectorPanel
+            selectedParam={selectedParam}
+            expression={chainExpression}
+            isRevealed={isParamRevealed}
+            stageRevealed={stageRevealed}
+            prediction={selectedParam ? predictions[selectedParam] : null}
+            onPredict={handlePredict}
+            paramValue={selectedParam ? fullSnapshot.weights[selectedParam]?.value : null}
+            onSelectParam={(param) => setSelectedParam(param)}
+          />
+        </div>
       </main>
     </div>
   )

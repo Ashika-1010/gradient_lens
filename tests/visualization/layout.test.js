@@ -6,6 +6,7 @@ import {
   NEURON_POSITIONS,
   NEURONS,
   EDGES,
+  EDGE_LABEL_POSITIONS,
 } from '../../src/visualization/layout.js'
 
 describe('Visualization Layout & Geometry (Milestone 9)', () => {
@@ -52,5 +53,19 @@ describe('Visualization Layout & Geometry (Milestone 9)', () => {
     expect(h1Pos).toBe(h2Pos)
     expect(x1Pos).toBeLessThan(h1Pos)
     expect(h1Pos).toBeLessThan(oPos)
+  })
+
+  // 6. Label positions defined for all 6 edges
+  it('defines valid canvas anchor positions for all 6 edge weight labels', () => {
+    for (const edge of EDGES) {
+      const pos = EDGE_LABEL_POSITIONS[edge.weightLabel]
+      expect(pos).toBeDefined()
+      expect(typeof pos.x).toBe('number')
+      expect(typeof pos.y).toBe('number')
+      expect(pos.x).toBeGreaterThan(0)
+      expect(pos.x).toBeLessThan(CANVAS_WIDTH)
+      expect(pos.y).toBeGreaterThan(0)
+      expect(pos.y).toBeLessThan(CANVAS_HEIGHT)
+    }
   })
 })

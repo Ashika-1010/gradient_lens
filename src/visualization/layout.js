@@ -31,3 +31,13 @@ export const EDGES = [
   { from: 'h1', to: 'o',  weightLabel: 'w_o_h1' },
   { from: 'h2', to: 'o',  weightLabel: 'w_o_h2' },
 ]
+
+export const EDGE_LABEL_POSITIONS = {
+  w_h1_x1: { x: 190, y: 116 },
+  w_h1_x2: { x: 155, y: 228 },
+  w_h2_x1: { x: 155, y: 172 },
+  w_h2_x2: { x: 190, y: 284 },
+  w_o_h1:  { x: 410, y: 146 },
+  w_o_h2:  { x: 410, y: 254 },
+}
+

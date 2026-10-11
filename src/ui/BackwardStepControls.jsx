@@ -10,13 +10,15 @@ import {
 
 /**
  * Backward step controls for debugging and stepping through backpropagation gradients.
+ * Reads only from gated visibleWeights so unpredicted gradients are not leaked.
  *
  * @param {{
  *   backwardStepIndex: number,
  *   onStep: () => void,
  *   onPrevious: () => void,
  *   onReset: () => void,
- *   fullWeights: Object|null,
+ *   visibleWeights?: Object|null,
+ *   fullWeights?: Object|null,
  *   forwardComplete: boolean
  * }} props
  */
@@ -25,6 +27,7 @@ export default function BackwardStepControls({
   onStep,
   onPrevious,
   onReset,
+  visibleWeights,
   fullWeights,
   forwardComplete,
 }) {
@@ -33,17 +36,23 @@ export default function BackwardStepControls({
   const isResetBackwardEnabled = canResetBackward(backwardStepIndex)
   const activeKey = currentBackwardStepKey(backwardStepIndex)
 
+  // Use gated visibleWeights; fallback to fullWeights if visibleWeights is not provided
+  const weightsToUse = visibleWeights !== undefined ? visibleWeights : fullWeights
+
   let readoutText = ''
 
   if (!forwardComplete) {
     readoutText = 'Finish the forward pass first'
   } else if (backwardStepIndex === INITIAL_BACKWARD_STEP) {
     readoutText = 'Not started — click "Next Gradient" to begin backpropagation'
-  } else if (activeKey && fullWeights && fullWeights[activeKey]) {
-    const rawGrad = fullWeights[activeKey].grad
-    const formattedGrad =
-      typeof rawGrad === 'number' ? rawGrad.toFixed(4) : String(rawGrad)
-    readoutText = `step ${backwardStepIndex + 1}/${BACKWARD_STEPS.length}: ∂L/∂${activeKey} = ${formattedGrad}`
+  } else if (activeKey && weightsToUse && weightsToUse[activeKey]) {
+    const rawGrad = weightsToUse[activeKey].grad
+    if (typeof rawGrad === 'number') {
+      readoutText = `step ${backwardStepIndex + 1}/${BACKWARD_STEPS.length}: ∂L/∂${activeKey} = ${rawGrad.toFixed(4)}`
+    } else {
+      // Gradient computed by backward stage, but awaiting user prediction before reveal
+      readoutText = `step ${backwardStepIndex + 1}/${BACKWARD_STEPS.length}: ∂L/∂${activeKey} computed — prediction required`
+    }
   }
 
   const isHighlighted = forwardComplete && backwardStepIndex > INITIAL_BACKWARD_STEP

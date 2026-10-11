@@ -6,13 +6,15 @@ import {
   NEURON_POSITIONS,
   NEURONS,
   EDGES,
+  EDGE_LABEL_POSITIONS,
 } from '../visualization/layout.js'
 import { valueToColor } from '../visualization/colorScale.js'
 import { findClickedEdge } from '../visualization/hitTest.js'
 
 /**
  * Renders the 2->2->1 neural network computation graph on an HTML5 canvas.
- * Consumes only primitive data snapshots and handles edge selection.
+ * Consumes only primitive data snapshots, renders the selected connection's weight value,
+ * and handles edge selection and outside-click dismissal.
  *
  * @param {{
  *   snapshot: { weights: Object, activations: Object|null },
@@ -27,8 +29,42 @@ export default function NetworkCanvas({
   selectedParam = null,
   onSelectEdge = null,
 }) {
+  const containerRef = useRef(null)
   const canvasRef = useRef(null)
   const currentSelected = selectedParam || selectedEdge
+
+  // Handle outside clicks to dismiss connection selection while preserving inspector interactions
+  useEffect(() => {
+    if (!currentSelected || !onSelectEdge) return
+
+    const handleOutsideClick = (e) => {
+      // If click is inside the network canvas container, it's not an outside click
+      if (containerRef.current?.contains(e.target)) return
+
+      // If click is interacting with the InspectorPanel, preserve selection
+      if (e.target && typeof e.target.closest === 'function') {
+        if (
+          e.target.closest('[data-testid="inspector-panel"]') ||
+          e.target.closest('[data-testid="inspector-container"]')
+        ) {
+          return
+        }
+      }
+
+      // Genuinely outside click: clear selection
+      onSelectEdge(null)
+    }
+
+    document.addEventListener('pointerdown', handleOutsideClick)
+    document.addEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('click', handleOutsideClick)
+
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick)
+      document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('click', handleOutsideClick)
+    }
+  }, [currentSelected, onSelectEdge])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -99,9 +135,56 @@ export default function NetworkCanvas({
           ctx.stroke()
         }
       }
+
+      // 2. Draw Selected Weight Label (if an edge is selected)
+      if (currentSelected) {
+        const selectedEdgeObj = EDGES.find((e) => e.weightLabel === currentSelected)
+        if (selectedEdgeObj) {
+          const weight = snapshot.weights[selectedEdgeObj.weightLabel]
+          const weightVal = weight ? weight.value : 0
+          const fromPos = NEURON_POSITIONS[selectedEdgeObj.from]
+          const toPos = NEURON_POSITIONS[selectedEdgeObj.to]
+          const pos = (EDGE_LABEL_POSITIONS && EDGE_LABEL_POSITIONS[selectedEdgeObj.weightLabel]) || {
+            x: (fromPos.x + toPos.x) / 2,
+            y: (fromPos.y + toPos.y) / 2 - 20,
+          }
+
+          const labelText = `${selectedEdgeObj.weightLabel}: ${weightVal.toFixed(4)}`
+
+          ctx.save()
+          ctx.font = 'bold 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
+          const metrics = ctx.measureText(labelText)
+          const padX = 8
+          const padY = 4
+          const boxWidth = metrics.width + padX * 2
+          const boxHeight = 22
+          const boxX = pos.x - boxWidth / 2
+          const boxY = pos.y - boxHeight / 2
+
+          // Dark pill background with highlight border
+          ctx.beginPath()
+          if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 6)
+          } else {
+            ctx.rect(boxX, boxY, boxWidth, boxHeight)
+          }
+          ctx.fillStyle = '#020617' // slate-950 deep dark
+          ctx.fill()
+          ctx.strokeStyle = '#38bdf8' // sky-400
+          ctx.lineWidth = 1.5
+          ctx.stroke()
+
+          // Text with high contrast
+          ctx.fillStyle = '#f8fafc' // slate-50
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(labelText, pos.x, pos.y)
+          ctx.restore()
+        }
+      }
     }
 
-    // 2. Draw Neurons (Activations & Labels)
+    // 3. Draw Neurons (Activations & Labels)
     for (const neuron of NEURONS) {
       const pos = NEURON_POSITIONS[neuron.id]
       let activation = 0.5
@@ -169,9 +252,14 @@ export default function NetworkCanvas({
   }
 
   return (
-    <div className="flex justify-center items-center bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-inner">
+    <div
+      ref={containerRef}
+      data-testid="network-canvas-container"
+      className="flex justify-center items-center bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-inner"
+    >
       <canvas
         ref={canvasRef}
+        data-testid="network-canvas"
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
         onClick={handleClick}
